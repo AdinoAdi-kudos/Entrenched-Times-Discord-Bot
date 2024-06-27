@@ -87,11 +87,12 @@ async def help(interaction: discord.Interaction):
 
 faction_names = {
     1: "Entrenched Times",
-    2: "Illyria",
-    3: "DK",
-    4: "41st",
-    5: "TWL",
-    6: "CIA",
+    2: "Eagles of Illyria",
+    3: "83rd Deathkorps of Krieg",
+    4: "41st Strosstruppen Brigade",
+    5: "The White Legion",
+    6: "Confederacion Iberio-Americana",
+    7: "Imperial Federation of R",
 }
 
 @client.tree.command(name="faction", description="Explain what are these factions")
@@ -132,9 +133,9 @@ async def new_submission(interaction: discord.Interaction, username: str, factio
         await interaction.followup.send("Submission cancelled.")
 
 @client.tree.command(name="update", description="Updating existing stats for the leaderboard")
-@app_commands.describe(username="E.g, IAmHeating > IAmGay", faction=" E.g, 41st > DK", nationality="Nationality of their country origin (optional)", kph=" E.g, 127 > 135", image="Use the link of what they shared")
+@app_commands.describe(username="E.g, IAmHeating > IAmGay", faction=" E.g, 41st > DK", nationality="Nationality of their country origin (optional)", kph=" E.g, 127 > 135", image="Use the link of what they shared")   
 @app_commands.check(lambda interaction: interaction.user.get_role(1104697514793369671) is not None or interaction.user.guild_permissions.administrator)
-async def update_submission(interaction: discord.Interaction, username: str, faction: str = "", nationality: str = "", kph: int = 0, image: str = ""):
+async def update_submission(interaction: discord.Interaction, username: str, faction: str = "", nationality: str = "", kph: str = "", image: str = ""):
     await interaction.response.send_message("Please confirm that the submission is correct. Type `yes` to confirm or `no` to cancel.")
 
     def check(message):
@@ -146,7 +147,8 @@ async def update_submission(interaction: discord.Interaction, username: str, fac
         nationality_str = f"Nationality: **{nationality}**" if nationality else ""
         kph_str = f"KPH: **{kph}**" if kph else ""
         image_str = f"Image: **{image}**" if image else ""
-        await interaction.followup.send(f"**[ :new: >New Submission< :new: ]** \nUsername: **{username}** \n{faction_str} \n{nationality_str} \n{kph_str} \n{image_str}")
+        emoji = discord.PartialEmoji(name="emoji_name", id=1215496391506264115, animated=False)
+        await interaction.followup.send(f"**[ {emoji} >Update Submission< {emoji} ]** \nUsername: **{username}** \n{faction_str} \n{nationality_str} \n{kph_str} \n{image_str}")
     else:
         await interaction.followup.send("Submission cancelled.")
 
