@@ -1,0 +1,7 @@
+Entrenched Times, Worldwide, News Server for all of Entrenched Factions, S+ tier, https://discord.gg/KpK2kUfGY4, https://example.com/et_thumbnail.png
+Illyria, Asia, PvP Faction, A tier, https://discord.gg/KpK2kUfGY4, https://example.com/illyria_thumbnail.png
+DK, North America, PvP Faction, A tier, https://discord.gg/KpK2kUfGY4, https://example.com/dk_thumbnail.png
+41st, North America, PvP Faction, A tier, https://discord.gg/KpK2kUfGY4, https://example.com/41st_thumbnail.png
+TWL, Oceania, PvP Faction, A tier, https://discord.gg/KpK2kUfGY4, https://example.com/twl_thumbnail.png
+CIA, South America, PvP Faction, A tier, https://discord.gg/KpK2kUfGY4, https://example.com/cia_thumbnail.png
+IFR, EU, PvP Faction, SSS Tier, https://discord.gg/KpK2kUfGY4, https://example.com/ifr_thumbnail.png
