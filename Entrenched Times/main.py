@@ -8,10 +8,34 @@ from discord import app_commands
 from discord.ext import commands
 from discord import Interaction
 from discord.ui import Select, View, Modal, TextInput
-import factions as d
+import factions 
+import gsheets
+import gspread
+from google.oauth2.service_account import Credentials
+
 
 
 client = commands.Bot(command_prefix=">", intents=discord.Intents.all())
+
+scopes = [
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive"
+]
+
+def sort_sheet():
+    data = worksheet.get_all_records()
+    data.sort(key=lambda x: x['KPH'], reverse=True)
+    worksheet.clear()
+    worksheet.append_row(['Index', 'Username', 'KPH', 'Nationality', 'Factions', 'Status'])
+    for i, row in enumerate(data, start=1):
+        row['Index'] = i
+        worksheet.append_row(list(row.values()))
+
+creds = Credentials.from_service_account_file("credentials.json", scopes=scopes)
+gs_client = gspread.authorize(creds)
+spreadsheet = gs_client.open('KPH Leaderboard Datasets')
+worksheet = spreadsheet.worksheet('Sheet1')
+
 #===================#
 # Discord Bot response
 #==================#
@@ -120,7 +144,7 @@ async def list(interaction: discord.Interaction, faction: int):
 @client.tree.command(name="submission", description="KPH submission for the leaderboard")
 @app_commands.describe(username="Username of the player", faction="Faction of the user", nationality="Nationality of their country origin", kph="Their KPH based on the image", image="Use the link of what they shared")
 @app_commands.check(lambda interaction: interaction.user.get_role(1104697514793369671) is not None or interaction.user.guild_permissions.administrator)
-async def new_submission(interaction: discord.Interaction, username: str, faction: str, nationality: str, kph: int, image: str ):
+async def new_submission(interaction: discord.Interaction, username: str, faction: str, nationality: str, kph: int, image: str):
     await interaction.response.send_message("Please confirm that the submission is correct. Type `yes` to confirm or `no` to cancel.")
 
     def check(message):
@@ -129,13 +153,18 @@ async def new_submission(interaction: discord.Interaction, username: str, factio
     msg = await client.wait_for("message", check=check)
     if msg.content.lower() == "yes":
         await interaction.followup.send(f"**[ :new: >New Submission< :new: ]**, \nUser: **{username}** \nFaction: **{faction}** \nNationality: **{nationality}** \nKPH: **{kph}** \n**[Image]({image})** ")
+        # Google Sheets Functions #
+        status = "[ :new: ]"
+        row = [username, kph, nationality, faction, status]
+        worksheet.append_row(row, table_range="H:M")
     else:
         await interaction.followup.send("Submission cancelled.")
+    
 
 @client.tree.command(name="update", description="Updating existing stats for the leaderboard")
 @app_commands.describe(username="E.g, IAmHeating > IAmGay", faction=" E.g, 41st > DK", nationality="Nationality of their country origin (optional)", kph=" E.g, 127 > 135", image="Use the link of what they shared")   
 @app_commands.check(lambda interaction: interaction.user.get_role(1104697514793369671) is not None or interaction.user.guild_permissions.administrator)
-async def update_submission(interaction: discord.Interaction, username: str, faction: str = "", nationality: str = "", kph: str = "", image: str = ""):
+async def update_submission(interaction: discord.Interaction, username: str, faction: str = "", nationality: str = "", kph: str = "", image: str = ""): 
     await interaction.response.send_message("Please confirm that the submission is correct. Type `yes` to confirm or `no` to cancel.")
 
     def check(message):
@@ -149,8 +178,46 @@ async def update_submission(interaction: discord.Interaction, username: str, fac
         image_str = f"Image: **{image}**" if image else ""
         emoji = discord.PartialEmoji(name="emoji_name", id=1215496391506264115, animated=False)
         await interaction.followup.send(f"**[ {emoji} >Update Submission< {emoji} ]** \nUsername: **{username}** \n{faction_str} \n{nationality_str} \n{kph_str} \n{image_str}")
+        # Google Sheets Functions #
+        status = "[ <:ups:1215496391506264115> ]"
+        row = [username, kph, nationality, faction, status]
+        worksheet.append_row(row, table_range="H:M") 
     else:
         await interaction.followup.send("Submission cancelled.")
+   
+
+@client.tree.command(name="update_stats", description="Update existing stats for the leaderboard")
+@app_commands.describe(username="Username of the player", kph="New KPH value", faction="New faction value", nationality="New nationality value", status="New status value")
+@app_commands.check(lambda interaction: interaction.user.get_role(1104697514793369671) is not None or interaction.user.guild_permissions.administrator)
+async def update_stats(interaction: discord.Interaction):
+    gsheet = gsheets.sheets
+    
+    username = spreadsheet.get_worksheet(8)
+    kph = spreadsheet.get_worksheet(9)
+    nationality = spreadsheet.get_worksheet(10)
+    faction = spreadsheet.get_worksheet(11)
+    status = spreadsheet.get_worksheet(12)
+
+    cell = username.find(username, in_column="H")
+    
+    if cell:
+        row_number = cell.row
+        
+        # Update columns A to F for the found row using data from columns G to M
+        gsheet.update_cell(row_number, 1, row_number - 1)     # Column A (Index)
+        gsheet.update_cell(row_number, 2, username)          # Column B (Username)
+        gsheet.update_cell(row_number, 3, kph)               # Column C (New KPH value)
+        gsheet.update_cell(row_number, 4, nationality)       # Column D (New nationality value)
+        gsheet.update_cell(row_number, 5, faction)           # Column E (New faction value)
+        gsheet.update_cell(row_number, 6, status)            # Column F (New status value)
+        
+        # Sort the sheet based on KPH value (Column C) in descending order
+        gsheet.sort((3, 'descending'))
+        
+        await interaction.response.send_message("Leaderboard in Google Sheets have been updated")
+
+
+
 
 def main() -> None:
     client.run(token=TOKEN)
