@@ -9,9 +9,12 @@ from discord.ext import commands
 from discord import Interaction
 from discord.ui import Select, View, Modal, TextInput
 import factions 
-import gsheets
+import gsheets      
 import gspread
 from google.oauth2.service_account import Credentials
+import asyncio
+import time
+import random
 
 
 
@@ -130,7 +133,7 @@ faction_names = {
         app_commands.Choice(name="CIA", value=6),
         app_commands.Choice(name="IFR", value=7),
     ])
-async def list(interaction: discord.Interaction, faction: int):
+async def faction_list(interaction: discord.Interaction, faction: int):
     from factions import cruncher
     faction_name = faction_names[faction]
     await cruncher(interaction, faction_name)
@@ -184,40 +187,61 @@ async def update_submission(interaction: discord.Interaction, username: str, fac
         worksheet.append_row(row, table_range="H:M") 
     else:
         await interaction.followup.send("Submission cancelled.")
-   
 
 @client.tree.command(name="update_stats", description="Update existing stats for the leaderboard")
-@app_commands.describe(username="Username of the player", kph="New KPH value", faction="New faction value", nationality="New nationality value", status="New status value")
 @app_commands.check(lambda interaction: interaction.user.get_role(1104697514793369671) is not None or interaction.user.guild_permissions.administrator)
 async def update_stats(interaction: discord.Interaction):
-    gsheet = gsheets.sheets
-    
-    username = spreadsheet.get_worksheet(8)
-    kph = spreadsheet.get_worksheet(9)
-    nationality = spreadsheet.get_worksheet(10)
-    faction = spreadsheet.get_worksheet(11)
-    status = spreadsheet.get_worksheet(12)
+    await interaction.response.defer()
 
-    cell = username.find(username, in_column="H")
-    
-    if cell:
-        row_number = cell.row
-        
-        # Update columns A to F for the found row using data from columns G to M
-        gsheet.update_cell(row_number, 1, row_number - 1)     # Column A (Index)
-        gsheet.update_cell(row_number, 2, username)          # Column B (Username)
-        gsheet.update_cell(row_number, 3, kph)               # Column C (New KPH value)
-        gsheet.update_cell(row_number, 4, nationality)       # Column D (New nationality value)
-        gsheet.update_cell(row_number, 5, faction)           # Column E (New faction value)
-        gsheet.update_cell(row_number, 6, status)            # Column F (New status value)
-        
-        # Sort the sheet based on KPH value (Column C) in descending order
-        gsheet.sort((3, 'descending'))
-        
-        await interaction.response.send_message("Leaderboard in Google Sheets have been updated")
+    asyncio.create_task(update_stats_background(interaction))
 
+async def update_stats_background(interaction: discord.Interaction):
+    if interaction.response.is_done():
+        await interaction.channel.send("Leaderboard in Google Sheets is being updated...")
+    else:
+        await interaction.response.defer()
+    gc = gspread.service_account(filename='credentials.json')
+    spreadsheet = gc.open('KPH Leaderboard Datasets')
+    worksheet = spreadsheet.sheet1  
 
+    existing_data = worksheet.get_all_records()
 
+    usernames = worksheet.col_values(8)[1:]  # Column H (Username)
+    kphs = worksheet.col_values(9)[1:]       # Column I (KPH)
+    nationalities = worksheet.col_values(10)[1:]  # Column J (Nationality)
+    factions = worksheet.col_values(11)[1:]  # Column K (Faction)
+    statuses = worksheet.col_values(12)[1:]  # Column L (Status)
+
+    new_data = [{'Username': username, 'KPH': kph, 'Nationality': nationality, 'Factions': faction, 'Status': status} for username, kph, nationality, faction, status in zip(usernames, kphs, nationalities, factions, statuses)]
+    combined_data = existing_data + new_data
+    combined_data.sort(key=lambda x: float(x['KPH']) if x['KPH'] else 0, reverse=True)
+
+    worksheet.clear()
+
+    header = [['Index', 'Username', 'KPH', 'Nationality', 'Factions', 'Status']]
+    data = [[index - 1, x['Username'], x['KPH'], x['Nationality'], str(x['Factions']), x['Status']] for index, x in enumerate(combined_data, start=2)]
+
+    retry_delay = 1
+    max_retries = 5
+
+    for attempt in range(max_retries):
+        try:
+            worksheet.update(range_name='A1:F' + str(len(data) + 1), values=header + data)
+            break
+        except gspread.exceptions.APIError as e:
+            if e.resp.status == 429:
+                print(f"Rate limit exceeded. Waiting {retry_delay} seconds before retrying.")
+                await asyncio.sleep(retry_delay)
+                retry_delay *= 2
+            else:
+                raise   
+    else:
+        print("Failed to update sheet after max retries.")
+
+    if interaction.response.is_done():
+        await interaction.channel.send("Leaderboard in Google Sheets is done being updated!")
+    else:
+        await interaction.response.defer()
 
 def main() -> None:
     client.run(token=TOKEN)
