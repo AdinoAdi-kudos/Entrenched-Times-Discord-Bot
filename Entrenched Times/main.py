@@ -8,13 +8,13 @@ from discord import app_commands
 from discord.ext import commands
 from discord import Interaction
 from discord.ui import Select, View, Modal, TextInput
-import factions 
-import gsheets      
+import factions   
 import gspread
 from google.oauth2.service_account import Credentials
 import asyncio
 import time
 import random
+import difflib
 
 
 
@@ -38,6 +38,7 @@ creds = Credentials.from_service_account_file("credentials.json", scopes=scopes)
 gs_client = gspread.authorize(creds)
 spreadsheet = gs_client.open('KPH Leaderboard Datasets')
 worksheet = spreadsheet.worksheet('Sheet1')
+log_sheet = spreadsheet.worksheet('Sheet2')
 
 #===================#
 # Discord Bot response
@@ -176,7 +177,7 @@ async def faction_list(interaction: discord.Interaction, faction: int):
 @client.tree.command(name="submission", description="KPH submission for the leaderboard")
 @app_commands.describe(username="Username of the player", faction="Faction of the user", nationality="Nationality of their country origin", kph="Their KPH based on the image", image="Use the link of what they shared")
 @app_commands.check(lambda interaction: interaction.user.get_role(1104697514793369671) is not None or interaction.user.guild_permissions.administrator)
-async def new_submission(interaction: discord.Interaction, username: str, faction: str, nationality: str, kph: int, image: str):
+async def new_submission(interaction: discord.Interaction, username: str, faction: str, nationality: str, kph: float, image: str):
     await interaction.response.send_message("Please confirm that the submission is correct. Type `yes` to confirm or `no` to cancel.")
 
     def check(message):
@@ -185,20 +186,36 @@ async def new_submission(interaction: discord.Interaction, username: str, factio
     msg = await client.wait_for("message", check=check)
     if msg.content.lower() == "yes":
         await interaction.followup.send(f"**[ :new: >New Submission< :new: ]**, \nUser: **{username}** \nFaction: **{faction}** \nNationality: **{nationality}** \nKPH: **{kph}** \n**[Image]({image})** ")
+
         # Google Sheets Functions #
         main_table = worksheet.get_all_records(expected_headers=["Index", "Username", "KPH", "Nationality", "Factions", "Status"])
-        next_index = len(main_table) + 1
+        new_submission = True
+        for row in main_table:
+            if row["Username"] == username:
+                new_submission = False
+                row["KPH"] = kph
+                row["Nationality"] = nationality
+                row["Factions"] = faction
+                row["Status"] = " :new: "
+                break
 
-        worksheet.update_cell(next_index + 1, 1, next_index)
-        worksheet.update_cell(next_index + 1, 2, username)
-        worksheet.update_cell(next_index + 1, 3, kph)
-        worksheet.update_cell(next_index + 1, 4, nationality)
-        worksheet.update_cell(next_index + 1, 5, faction)
-        worksheet.update_cell(next_index + 1, 6, "[ :new: ]")
+        if new_submission:
+            next_index = len(main_table) + 1
+            worksheet.update_cell(next_index + 1, 1, next_index)
+            worksheet.update_cell(next_index + 1, 2, username)
+            worksheet.update_cell(next_index + 1, 3, kph)
+            worksheet.update_cell(next_index + 1, 4, nationality)
+            worksheet.update_cell(next_index + 1, 5, faction)
+            worksheet.update_cell(next_index + 1, 6, "[ :new: ]")
+
+        # Logging
+        # Logging
+            log_spreadsheet = spreadsheet
+            log_sheet = log_spreadsheet.worksheet("Sheet2") 
+            log_sheet.append_row([username, "", "", "", "", "", "", "","New Submission"])
     else:
         await interaction.followup.send("Submission cancelled.")
 
-    
 
 @client.tree.command(name="update", description="Updating existing stats for the leaderboard")
 @app_commands.describe(username="E.g, IAmHeating > IAmGay", faction=" E.g, 41st > DK", nationality="Nationality of their country origin (optional)", kph=" E.g, 127 > 135", image="Use the link of what they shared")
@@ -211,36 +228,66 @@ async def update_submission(interaction: discord.Interaction, username: str, fac
 
     msg = await client.wait_for("message", check=check)
     if msg.content.lower() == "yes":
-        faction_str = f"Faction: **{faction}**" if faction else ""
-        nationality_str = f"Nationality: **{nationality}**" if nationality else ""
-        kph_str = f"KPH: **{kph}**" if kph else ""
-        image_str = f"Image: **{image}**" if image else ""
-        emoji = discord.PartialEmoji(name="emoji_name", id=1215496391506264115, animated=False)
-        await interaction.followup.send(f"**[ {emoji} >Update Submission< {emoji} ]** \nUsername: **{username}** \n{faction_str} \n{nationality_str} \n{kph_str} \n{image_str}")
-        
         # Google Sheets Functions #
         main_table = worksheet.get_all_records(expected_headers=["Index", "Username", "KPH", "Nationality", "Factions", "Status"])
         usernames = [row['Username'] for row in main_table]
         if username in usernames:
             row_index = usernames.index(username) + 2
-            if kph:
-                worksheet.update_cell(row_index, 3, kph)
-                worksheet.update_cell(row_index, 6, "[ <:ups:1215496391506264115> ]")
-            if faction:
-                worksheet.update_cell(row_index, 5, faction)
-            if nationality:
-                worksheet.update_cell(row_index, 4, nationality)
+            old_username = username
         else:
-            await interaction.followup.send("Username not found in main table.")
+            close_matches = difflib.get_close_matches(username, usernames, n=1, cutoff=0.6)
+            if close_matches:
+                close_match = close_matches[0]
+                row_index = usernames.index(close_match) + 2
+                old_username = close_match
+            else:
+                await interaction.followup.send("Username not found in main table.")
+                return
+
+        old_kph = worksheet.cell(row_index, 3).value
+        old_faction = worksheet.cell(row_index, 5).value
+        old_nation = worksheet.cell(row_index, 4).value
+
+        faction_str = f"Faction: **{faction}**" if faction and faction!= old_faction else ""
+        nationality_str = f"Nationality: **{nationality}**" if nationality and nationality!= old_nation else ""
+        kph_str = f"KPH: **{kph}**" if kph and kph!= old_kph else ""
+        image_str = f"Image: **{image}**" if image else ""
+        emoji = discord.PartialEmoji(name="emoji_name", id=1215496391506264115, animated=False)
+        await interaction.followup.send(f"**[ {emoji} >Update Submission< {emoji} ]** \nUsername: **{username}** \n{faction_str} \n{nationality_str} \n{kph_str} \n{image_str}")
+
+        if kph:
+            worksheet.update_cell(row_index, 3, kph)
+            new_kph = kph
+        else:
+            new_kph = old_kph
+        if faction:
+            worksheet.update_cell(row_index, 5, faction)
+            new_faction = faction
+        else:
+            new_faction = old_faction
+        if nationality:
+            worksheet.update_cell(row_index, 4, nationality)
+            new_nation = nationality
+        else:
+            new_nation = old_nation
+
+        if kph and kph != old_kph:
+            worksheet.update_cell(row_index, 6, f"<:ups:1215496391506264115> Updated Submission")
+        else:
+            worksheet.update_cell(row_index, 6, "Updated Submission")
+
+        # Logging
+        log_sheet.append_row([old_username, username, old_kph, new_kph, old_faction, new_faction, old_nation, new_nation, "Updated Submission"])
     else:
         await interaction.followup.send("Submission cancelled.")
-
 
 @client.tree.command(name="update_stats", description="Update existing stats for the leaderboard")
 @app_commands.check(lambda interaction: interaction.user.get_role(1104697514793369671) is not None or interaction.user.guild_permissions.administrator)
 async def update_stats(interaction: discord.Interaction):
-    await interaction.response.defer()
+    if interaction.response.is_done():
+        return
 
+    await interaction.response.defer()
     asyncio.create_task(update_stats_background(interaction))
 async def update_stats_background(interaction: discord.Interaction):
     if interaction.response.is_done():
@@ -251,30 +298,56 @@ async def update_stats_background(interaction: discord.Interaction):
     spreadsheet = gc.open('KPH Leaderboard Datasets')
     worksheet = spreadsheet.sheet1  
 
-    existing_data = worksheet.get_all_records(expected_headers=["Index", "Username", "KPH", "Nationality", "Factions", "Status"])
+    all_records = worksheet.get_all_records(expected_headers=["Index", "Username", "KPH", "Nationality", "Factions", "Status"])
 
-    usernames = worksheet.col_values(8)[1:]  # Column H (Username)
-    kphs = worksheet.col_values(9)[1:]       # Column I (KPH)
-    nationalities = worksheet.col_values(10)[1:]  # Column J (Nationality)
-    factions = worksheet.col_values(11)[1:]  # Column K (Faction)
-    statuses = worksheet.col_values(12)[1:]  # Column L (Status)
+    # Sort the data by KPH in descending order
+    sorted_data = sorted(all_records, key=lambda x: float(x['KPH']) if x['KPH'] else 0, reverse=True)
 
-    new_data = [{'Username': username, 'KPH': kph, 'Nationality': nationality, 'Factions': faction, 'Status': status} for username, kph, nationality, faction, status in zip(usernames, kphs, nationalities, factions, statuses)]
-    combined_data = existing_data + new_data
-    combined_data.sort(key=lambda x: float(x['KPH']) if x['KPH'] else 0, reverse=True)
+    # Create a dictionary to store the relationships between the columns
+    column_relationships = {
+        'Status': {'Factions': {}, 'Nationality': {}}
+    }
 
-    worksheet.clear()
+    for record in all_records:
+        faction = record['Factions']
+        nationality = record['Nationality']
+        status = record['Status']
+        if faction not in column_relationships['Status']['Factions']:
+            column_relationships['Status']['Factions'][faction] = []
+        if nationality not in column_relationships['Status']['Nationality']:
+            column_relationships['Status']['Nationality'][nationality] = []
+        column_relationships['Status']['Factions'][faction].append(status)
+        column_relationships['Status']['Nationality'][nationality].append(status)
 
+    # Create the data list using the column relationships
     header = [['Index', 'Username', 'KPH', 'Nationality', 'Factions', 'Status']]
-    data = [[index, x['Username'], x['KPH'], x['Nationality'], x['Factions'], x['Status']] for index, x in enumerate(combined_data, start=1)]
+    data = []
+    for index, record in enumerate(sorted_data, start=1):
+        faction = record['Factions']
+        nationality = record['Nationality']
+        status = record['Status']
+        data.append([
+            index,
+            record['Username'],
+            record['KPH'],
+            nationality,
+            faction,
+            column_relationships['Status']['Factions'][faction][0] if faction in column_relationships['Status']['Factions'] else '',
+            column_relationships['Status']['Nationality'][nationality][0] if nationality in column_relationships['Status']['Nationality'] else ''
+        ])
+
+    # Clear the contents of the worksheet
+    worksheet.batch_update([{
+        'range': 'A1:F' + str(len(data) + 1),
+        'values': [[''] * len(header[0])] * (len(data) + 1)
+    }])
 
     retry_delay = 1
     max_retries = 5
 
     for attempt in range(max_retries):
         try:
-            worksheet.update('A1:F' + str(len(data) + 1), header + data)
-            worksheet.update('H1:L1', [['Username submit', 'KPH submit', 'Nationality submit', 'Faction submit', 'Status submit']])
+            worksheet.update('A1:F' + str(len(data) + 1), [header[0]] + data)  #Update entire range, including header
             break
         except gspread.exceptions.APIError as e:
             if e.resp.status == 429:
@@ -291,16 +364,12 @@ async def update_stats_background(interaction: discord.Interaction):
     else:
         await interaction.response.defer()
 
-@client.tree.command(name="leaderboard", description="Display the current leaderboard")
+@client.tree.command(name="leaderboard", description="Update existing stats for the leaderboard")
 @app_commands.check(lambda interaction: interaction.user.get_role(1104697514793369671) is not None or interaction.user.guild_permissions.administrator)
-async def leaderboard(interaction: discord.Interaction):
-    await interaction.response.defer()
-
-    gc = gspread.service_account(filename='credentials.json')
-    spreadsheet = gc.open('KPH Leaderboard Datasets')
-    worksheet = spreadsheet.sheet1  
+async def update_stats(interaction: discord.Interaction):
 
     data = worksheet.get_all_records(expected_headers=["Index", "Username", "KPH", "Nationality", "Factions", "Status"])
+    log_data = log_sheet.get_all_records()
 
     messages = []
     message = "# KPH Leaderboard\n### (Must be from an account with 24 hours or more, and over 100 kph.)\n"
@@ -309,9 +378,12 @@ async def leaderboard(interaction: discord.Interaction):
         if i <= 3:
             medal = ["🥇", "🥈", "🥉"][i-1]
         else:
-            medal = f"<:4th:125718097516783617>:" if i == 4 else f"<:5th:1257180994952495114>:" if i == 5 else ""
+            medal = f"<:4th:1257180975167836171>:" if i == 4 else f"<:5th:1257180994952495114>:" if i == 5 else ""
 
-        message_part = f"{medal} {i}: {row['Username']} **({row['KPH']})** {row['Nationality']} {row['Factions']} " + (f"[{row['Status']}]" if row['Status'] else "")
+        if i <= 5:
+            message_part = f"{medal}: {row['Username']} **({row['KPH']})** {row['Nationality']} {row['Factions']} " + (f"[{row['Status']}]" if row['Status'] else "")
+        else:
+            message_part = f"{i}: {medal} {row['Username']} **({row['KPH']})** {row['Nationality']} {row['Factions']} " + (f"[{row['Status']}]" if row['Status'] else "")
         if len(message) + len(message_part) > 2000:
             messages.append(message)
             message = message_part
@@ -321,8 +393,104 @@ async def leaderboard(interaction: discord.Interaction):
     if message:
         messages.append(message)
 
+    factions = {
+        "1225417233316970576": "41st",
+        "1215458243875184652": "AH",
+        "1215458052451336254": "Farvala",
+        "1215458142272356352": "PLF",
+        "1215458177873608766": "Russia",
+        "1231526180583379035": "TWL",
+        "1215485366186942484": "HFO",
+        "1215484975302967377": "Toya",
+        "1215485395546939422": "Kozak",
+        "1236463033618923630": "Ukraine",
+        "1215487085465698385": "CIA",
+        "1215497824360202240": "Illyria",
+        "1215485007049785408": "Bremen",
+        "1215521967319293952": "Larimar",
+        "1215577329472905216": "DK",
+        "1229576193091829850": "Gowa",
+        "1238798185531572244": "Valient",
+        "1241204662430859355": "Terasvia",
+        "1244268962179715174": "Ottowoman",
+        "1252079179344777217": "Romania",
+        "1252080175026278440": "Imperio Ale",
+
+    }
+
+    changes_message = "```Changes:\n"
+    updated_users = []
+    faction_changes = {}
+    nation_changes = {}
+
+    for log_row in log_data:
+        if log_row["status"] == "New Submission":
+            changes_message += f"- Added {log_row['username']} to the leaderboard\n"
+        elif log_row["status"] == "Updated Submission":
+            updated_users.append(log_row['username'])
+            if log_row["old faction"] != log_row["new faction"]:
+                old_faction_id = log_row["old faction"]
+                new_faction_id = log_row["new faction"]
+                old_faction = factions.get(old_faction_id, old_faction_id)
+                new_faction = factions.get(new_faction_id, new_faction_id)
+                faction_changes[log_row['username']] = (old_faction, new_faction)
+            if log_row["old nation"] != log_row["new nation"]:
+                nation_changes[log_row['username']] = (log_row['old nation'], log_row['new nation'])
+
+    if updated_users:
+        changes_message += f"- {', '.join([f'{user}\'s' for user in updated_users])} KPH's been updated.\n"
+    if faction_changes:
+        changes_message += "Faction changes:\n"
+        for user in faction_changes:
+            old_faction, new_faction = faction_changes[user]
+            old_faction = old_faction.split(':')[1] if ':' in old_faction else old_faction
+            new_faction = new_faction.split(':')[1] if ':' in new_faction else new_faction
+            changes_message += f"- {user}'s faction changed from {old_faction} to {new_faction}.\n"
+    if nation_changes:
+        changes_message += "Nation changes:\n"
+        for user in nation_changes:
+            old_nation, new_nation = nation_changes[user]
+            changes_message += f"- {user}'s nation changed from {old_nation} to {new_nation}.\n"
+
+    changes_message += "```\n"
+
+    factions_message = "\nFactions:\n"
+    factions_message += "<:41st:1225417233316970576>  - 41st Strosstrupen\n"
+    factions_message += "<:AH:1215458243875184652> - Austria Hungary\n"
+    factions_message += "<:Farvala:1215458052451336254>  - Farvala\n"
+    factions_message += "<:PLF:1215458142272356352> - Partisan Liberation Front\n"
+    factions_message += "<:Russia:1215458177873608766> - Rusikiya Emperiya\n"
+    factions_message += "<:WhiteLegion:1231526180583379035>  - White Legion\n"
+    factions_message += "<:HFO:1215485366186942484>  - Holy Fishian Order\n"
+    factions_message += "<:Toya:1215484975302967377> - Great Toya\n"
+    factions_message += "<:Kozak:1215485395546939422> - Kavkazkaya Hetmanate (Kozak)\n"
+    factions_message += "<:Ukraine:1236463033618923630> - Druhyy Hetʹmanat\n"
+    factions_message += "<:CIA:1215487085465698385> - Confederacion Ibero-Americana\n"
+    factions_message += "<:Illyria:1215497824360202240> - Eagle of Illyria\n"
+    factions_message += "<:Bremen:1215485007049785408> - Bremen Uprising \n"
+    factions_message += "<:Larimar:1215521967319293952> - Larimar Legion\n"
+    factions_message += "<:DK:1215577329472905216> - 83rd Deathkorps\n"
+    factions_message += "<:Gowa:1229576193091829850> - Sultanate of Gowa\n"
+    factions_message += "<:Valient:1238798185531572244> - Valiant\n"
+    factions_message += "<:Terasvia:1241204662430859355> - Terasvia\n"
+    factions_message += "<:Otwoman:1244268962179715174> - Ottoman\n"
+    factions_message += "<:Rumania:1252079179344777217> - Regatul României\n"
+    factions_message += "<:ImperioAleman:1252080175026278440> - Imperio Aleman\n"
+    factions_message += "<:SpartanImperium:1257869011144806472> - Spartan Imperium\n"
+    factions_message += "<:Philippines:1257879062211461181>  - Filipinas Archipelago\n"
+    factions_message += "\nLegends\n"
+    factions_message += "[ <:ups:1215496391506264115> ] - Rating up\n"
+    factions_message += "[ 🆕 ] - New Submission\n"
+
     for message in messages:
         await interaction.followup.send(message)
+    await interaction.followup.send(changes_message + factions_message)
+
+    num_rows = len(worksheet.get_all_records())
+    worksheet.update('F2:F', [[''] for _ in range(num_rows)])
+
+    num_rows = len(log_sheet.get_all_records())
+    log_sheet.update('A2:I', [[''] * 9 for _ in range(num_rows - 1)])
 
 
 def main() -> None:
