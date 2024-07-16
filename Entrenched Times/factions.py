@@ -1,21 +1,15 @@
 import discord
-import csv
+import json
 
 faction_data = {}
 
-with open('factions.txt', 'r') as f:
-    reader = csv.reader(f)
-    for row in reader:
-        faction_name, region_based, descriptions, tier_rating, server_invite, thumbnail_url = row
-        faction_data[faction_name] = {
-            'region_based': region_based,
-            'descriptions': descriptions,
-            'tier_rating': tier_rating,
-            'server_invite': server_invite,
-            'thumbnail_url': thumbnail_url
-        }
+with open('factions.json', 'r') as f:
+    data = json.load(f)
+    for faction_name, faction_info in data['factions'].items():
+        faction_data[faction_name] = faction_info
 
 async def cruncher(interaction: discord.Interaction, faction_name: str):
+    faction_name = faction_name.strip()
     embed = discord.Embed(
         title=f"{faction_name} Details",
         description="Here are the details:",
@@ -30,7 +24,23 @@ async def cruncher(interaction: discord.Interaction, faction_name: str):
     embed.add_field(name="\u200b", value="\u200b", inline=False)
     embed.add_field(name="Descriptions", value=faction_info['descriptions'], inline=True)
     embed.add_field(name="\u200b", value="\u200b", inline=False)
-    embed.add_field(name="Tier rating", value=faction_info['tier_rating'], inline=True)
+
+    tier_rating_color = {
+        "S": discord.Color.blue(),
+        "A+": discord.Color.dark_blue(),
+        "A": discord.Color.purple(),
+        "A-": discord.Color.dark_purple(),
+        "B+": discord.Color.gold(),
+        "B": discord.Color.orange(),
+        "B-": discord.Color.dark_orange(),
+        "C+": discord.Color.brand_red(),
+        "C": discord.Color.red(),
+        "C-": discord.Color.dark_red(),
+        "F": discord.Color.fuchsia(),
+        "Discontinued": discord.Color.magenta()
+    }
+
+    embed.add_field(name="Tier rating", value=faction_info['tier_rating'], inline=True, color=tier_rating_color.get(faction_info['tier_rating'], discord.Color.default()))
     embed.add_field(name="Server Invite", value=faction_info['server_invite'], inline=True)
 
     embed.set_footer(text="Powered by the Entrenched Times team")

@@ -150,6 +150,13 @@ faction_names = {
     5: "The White Legion",
     6: "Confederacion Iberio-Americana",
     7: "Imperial Federation of R",
+    8: "Valiant Timekeeper",
+    9: "Imperio Aleman",
+    10: "Republika Kozak",
+    11: "Partisan Liberation Front",
+    12: "Great Toya",
+    13: "Rusikiya Emperiya",
+    14: "Austria-Hungary"
 }
 
 @client.tree.command(name="faction", description="Explain what are these factions")
@@ -162,12 +169,18 @@ faction_names = {
         app_commands.Choice(name="TWL", value=5),
         app_commands.Choice(name="CIA", value=6),
         app_commands.Choice(name="IFR", value=7),
+        app_commands.Choice(name="Valiant", value=8),
+        app_commands.Choice(name="IA", value=9),
+        app_commands.Choice(name="Kozak", value=10),
+        app_commands.Choice(name="PLF", value=11),
+        app_commands.Choice(name="Toya", value=12),
+        app_commands.Choice(name="RIA", value=13),
+        app_commands.Choice(name="AH", value=14),
     ])
 async def faction_list(interaction: discord.Interaction, faction: int):
     from factions import cruncher
     faction_name = faction_names[faction]
     await cruncher(interaction, faction_name)
-
 
 #============================#
 # Discord Entrenched Staff Wok
