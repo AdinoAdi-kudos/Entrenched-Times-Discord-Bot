@@ -24,23 +24,7 @@ async def cruncher(interaction: discord.Interaction, faction_name: str):
     embed.add_field(name="\u200b", value="\u200b", inline=False)
     embed.add_field(name="Descriptions", value=faction_info['descriptions'], inline=True)
     embed.add_field(name="\u200b", value="\u200b", inline=False)
-
-    tier_rating_color = {
-        "S": discord.Color.blue(),
-        "A+": discord.Color.dark_blue(),
-        "A": discord.Color.purple(),
-        "A-": discord.Color.dark_purple(),
-        "B+": discord.Color.gold(),
-        "B": discord.Color.orange(),
-        "B-": discord.Color.dark_orange(),
-        "C+": discord.Color.brand_red(),
-        "C": discord.Color.red(),
-        "C-": discord.Color.dark_red(),
-        "F": discord.Color.fuchsia(),
-        "Discontinued": discord.Color.magenta()
-    }
-
-    embed.add_field(name="Tier rating", value=faction_info['tier_rating'], inline=True, color=tier_rating_color.get(faction_info['tier_rating'], discord.Color.default()))
+    embed.add_field(name="Tier rating", value=faction_info['tier_rating'], inline=True)
     embed.add_field(name="Server Invite", value=faction_info['server_invite'], inline=True)
 
     embed.set_footer(text="Powered by the Entrenched Times team")
